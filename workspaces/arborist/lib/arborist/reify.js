@@ -291,15 +291,17 @@ module.exports = cls => class Reifier extends cls {
 
 
     const old = this.idealTree
-    /*
+    //*
     const spy = spyPropertyReadsRecursive
     this.idealTree = spy(this.idealTree)
-    */
+    //*/
     
+    /*
     const isolatedTree = this[_createIsolatedTree](this.idealTree)
     this.idealTree = isolatedTree
-    
+    //*/
 
+    debugger
     await this[_diffTrees]()
 
     this.idealTree = old
@@ -309,7 +311,7 @@ module.exports = cls => class Reifier extends cls {
     await this[_saveIdealTree](options)
     await this[_copyIdealToActual]()
     await this[_awaitQuickAudit]()
-    //require('spy-property-reads-recursive').printPathsForward()
+    require('spy-property-reads-recursive').printPathsForward()
 
     this.finishTracker('reify')
     process.emit('timeEnd', 'reify')
