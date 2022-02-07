@@ -1,5 +1,6 @@
 // mixin implementing the reify method
 
+const { getNodeHashes } = require('hash-graph-nodes')
 const onExit = require('../signal-handling.js')
 const pacote = require('pacote')
 const AuditReport = require('../audit-report.js')
@@ -133,10 +134,48 @@ module.exports = cls => class Reifier extends cls {
   }
 
   [_createIsolatedTree](idealTree) {
+    const hasher = (() => {
+      const result = new Map()
+      const idToLocation = new Map()
+      const locationToId = new Map()
+      const graph = { nodes: [], links: [] }
+      const visited = new Set()
+      const visit = (node, parentId) => {
+        let id = 0
+        if (!visited.has(node.location)) {
+          id = locationToId.size
+          idToLocation.set(id, node.location)
+          locationToId.set(node.location, id)
+          graph.nodes.push({ contentHash: `${node.name}@${node.version}`, id})
+        } else {
+          id = locationToId.get(node.location)
+        }
+        if (parentId !== undefined) {
+          graph.links.push({ source: parentId, target: id })
+        }
+        if (!visited.has(node.location)) {
+          visited.add(node.location);
+          [...node.edgesOut.values()].forEach(e => {
+              const target = e.to && e.to.target
+              if (target) {
+                visit(target, id)
+              }
+              })
+        }
+      }
+      visit(idealTree)
+      const nodeHashes = getNodeHashes(graph)
+      nodeHashes.forEach((value, key) => {
+          result.set(idToLocation.get(key), value)
+          })
+
+      return result
+        })()
     const t = {
       fsChildren: [],
       integrity: null,
       resolved: null,
+      inventory: new Map(),
       isLink: false,
       isRoot: true,
       edgesIn: new Set(),
@@ -164,11 +203,12 @@ module.exports = cls => class Reifier extends cls {
         path: c.path
       }
       t.fsChildren.push(workspace)
+      t.inventory.set(workspace.location, workspace)
     })
     idealTree.inventory.forEach(c => {
       // workspaces are already handled by fsChildren and project root has already been created
       if (!c.isWorkspace && !c.isProjectRoot) {
-        const key = `${c.name}@${c.version}`
+        const key = hasher.get(c.location)
         if (processed.has(key)) { return }
         processed.add(key)
         const location = `node_modules/.store/${key}/node_modules/${c.name}`
@@ -199,11 +239,12 @@ module.exports = cls => class Reifier extends cls {
           }
         newChild.target = newChild
         t.children.push(newChild)
+        t.inventory.set(newChild.location, newChild)
       }
     })
     const memo = new Set()
     function processEdges(node) {
-      const key = `${node.name}@${node.version}`
+      const key = hasher.get(node.location)
       if (memo.has(key)) { return }
       memo.add(key)
       const fromLocation = node.isWorkspace ? node.location : `node_modules/.store/${key}/node_modules/${node.name}` 
@@ -222,9 +263,10 @@ module.exports = cls => class Reifier extends cls {
 
         const binNames = to.package.bin && Object.keys(to.package.bin) || []
 
-        const toKey = `${to.name}@${to.version}`
+        const toKey = hasher.get(to.target.location)
         const toLocation = to.isWorkspace ? to.location : `node_modules/.store/${toKey}/node_modules/${to.name}` 
         const target = to.isWorkspace ? t.fsChildren.find(c => c.location === to.target.location) : t.children.find(c => c.location === toLocation)
+        // TODO: we should no-op is an edge has already been created with the same fromKey and toKey
 
         binNames.forEach(bn => {
             target.binPaths.push(`${from.realpath}/node_modules/.bin/${bn}`)
@@ -291,27 +333,27 @@ module.exports = cls => class Reifier extends cls {
 
 
     const old = this.idealTree
-    //*
+    /*
     const spy = spyPropertyReadsRecursive
     this.idealTree = spy(this.idealTree)
     //*/
     
-    /*
+    //*
     const isolatedTree = this[_createIsolatedTree](this.idealTree)
     this.idealTree = isolatedTree
     //*/
 
-    debugger
     await this[_diffTrees]()
 
-    this.idealTree = old
 
     await this[_reifyPackages]()
+
+    this.idealTree = old
 
     await this[_saveIdealTree](options)
     await this[_copyIdealToActual]()
     await this[_awaitQuickAudit]()
-    require('spy-property-reads-recursive').printPathsForward()
+    //require('spy-property-reads-recursive').printPathsForward()
 
     this.finishTracker('reify')
     process.emit('timeEnd', 'reify')
