@@ -8,7 +8,6 @@ const { subset, intersects } = require('semver')
 const npa = require('npm-package-arg')
 const debug = require('../debug.js')
 const walkUp = require('walk-up-path')
-const { spyPropertyReadsRecursive } = require('spy-property-reads-recursive')
 
 const { dirname, resolve, relative, join } = require('path')
 const { depth: dfwalk } = require('treeverse')
@@ -319,6 +318,8 @@ module.exports = cls => class Reifier extends cls {
 
   // public method
   async reify (options = {}) {
+    const isolated = options.isolated || false
+
     if (this[_packageLockOnly] && this[_global]) {
       const er = new Error('cannot generate lockfile for global packages')
       er.code = 'ESHRINKWRAPGLOBAL'
@@ -338,15 +339,10 @@ module.exports = cls => class Reifier extends cls {
 
 
     const old = this.idealTree
-    /*
-    const spy = spyPropertyReadsRecursive
-    this.idealTree = spy(this.idealTree)
-    //*/
-    
-    //*
-    const isolatedTree = this[_createIsolatedTree](this.idealTree)
-    this.idealTree = isolatedTree
-    //*/
+    if (isolated) {
+      const isolatedTree = this[_createIsolatedTree](this.idealTree)
+      this.idealTree = isolatedTree
+    }
 
     await this[_diffTrees]()
 
@@ -358,7 +354,6 @@ module.exports = cls => class Reifier extends cls {
     await this[_saveIdealTree](options)
     await this[_copyIdealToActual]()
     await this[_awaitQuickAudit]()
-    //require('spy-property-reads-recursive').printPathsForward()
 
     this.finishTracker('reify')
     process.emit('timeEnd', 'reify')
