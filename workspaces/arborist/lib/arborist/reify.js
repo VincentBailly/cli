@@ -149,6 +149,7 @@ module.exports = cls => class Reifier extends cls {
     }
     function edgeProxy(edge) {
       return {
+        optional: edge.optional,
         to: edge.to ? {
           target: tmpProxyMemo(edge.to.target),
           package: edge.to.package,
@@ -175,6 +176,7 @@ module.exports = cls => class Reifier extends cls {
       copy('hasInstallScript')
       copy('name')
       copy('version')
+      result.id = tree.location
       result.target = tree.target && tmpProxyMemo(tree.target)
       result.parent= tree.parent && tmpProxyMemo(tree.parent)
       result.children= mapMap(tree.children, tmpProxyMemo)
@@ -194,19 +196,19 @@ module.exports = cls => class Reifier extends cls {
       const visited = new Set()
       const visit = (node, parentId) => {
         let id = 0
-        if (!visited.has(node.location)) {
+        if (!visited.has(node.id)) {
           id = locationToId.size
-          idToLocation.set(id, node.location)
-          locationToId.set(node.location, id)
+          idToLocation.set(id, node.id)
+          locationToId.set(node.id, id)
           graph.nodes.push({ contentHash: `${node.name}@${node.version}`, id})
         } else {
-          id = locationToId.get(node.location)
+          id = locationToId.get(node.id)
         }
         if (parentId !== undefined) {
           graph.links.push({ source: parentId, target: id })
         }
-        if (!visited.has(node.location)) {
-          visited.add(node.location);
+        if (!visited.has(node.id)) {
+          visited.add(node.id);
           [...node.edgesOut.values()].forEach(e => {
               const target = e.to && e.to.target
               if (target) {
@@ -224,7 +226,7 @@ module.exports = cls => class Reifier extends cls {
       return result
         })()
     const getKey = (idealTreeNode) => {
-      const hash = hasher.get(idealTreeNode.location)
+      const hash = hasher.get(idealTreeNode.id)
       return `${idealTreeNode.name}@${idealTreeNode.version}-${hash.substring(hash.length - 5)}`
     }
     const t = {
@@ -234,6 +236,7 @@ module.exports = cls => class Reifier extends cls {
       inventory: new Map(),
       isLink: false,
       isRoot: true,
+      binPaths: [],
       edgesIn: new Set(),
       edgesOut: new Map(),
       hasShrinkwrap: false,
