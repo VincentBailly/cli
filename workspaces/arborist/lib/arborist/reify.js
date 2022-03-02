@@ -137,6 +137,7 @@ module.exports = cls => class Reifier extends cls {
     await this[_makeIdealGraph](this.options)
 
     const proxiedIdealTree = this.idealGraph
+    debugger
 
     const hasher = (() => {
       const result = new Map()
